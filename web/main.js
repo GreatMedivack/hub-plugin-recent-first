@@ -40,6 +40,9 @@ function sortGroups() {
   queued = false;
   const now = performance.now(), due = now - sortedAt >= REORDER_MS;
   let moved = false, stale = false;
+  // сначала порядок во всех группах, потом сдвиги: чтение места строки после записи order — раскладка всей страницы,
+  // по одной на группу (23.10: ~6 раскладок на снимок, 0,65 с из 30); так — одна
+  const slides = [];
   for (const ul of document.querySelectorAll("#list .sgroup > ul")) {
     ul.classList.add("sact-flex");
     const rows = [...ul.children].filter((li) => !li.classList.contains("forks"));
@@ -65,8 +68,9 @@ function sortGroups() {
       const next = li.nextElementSibling;
       if (next?.classList.contains("forks")) next.style.order = String(i * 2 + 1);
     }
-    slide(ul, named);
+    slides.push([ul, named]);
   }
+  for (const [ul, named] of slides) slide(ul, named);
   if (moved) sortedAt = now;
   if (stale && !timer) timer = setTimeout(() => { timer = 0; sortGroups(); }, sortedAt + REORDER_MS - now);
 }
