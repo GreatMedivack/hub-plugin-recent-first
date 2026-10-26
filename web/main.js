@@ -84,7 +84,10 @@ export default function register(hub) {
       snapRef = snap;
       root.dataset.sact = ctx.session.name;
       root.classList.add("sact-mark");
-      if (!queued) { queued = true; requestAnimationFrame(sortGroups); }
+      // порядок — в том же кадре, что и новые строки: хаб собирает список и рисует его в задаче, а кадр
+      // requestAnimationFrame из неё иногда наступает уже после отрисовки — строки на кадр вставали в порядке хаба
+      // и возвращались назад (сдвиг раскладки 0,3 на каждом снимке). Микрозадача — после всей сборки, до отрисовки
+      if (!queued) { queued = true; queueMicrotask(sortGroups); }
     },
   });
 }
