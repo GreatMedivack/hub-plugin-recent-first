@@ -1,4 +1,4 @@
-/* группа — flex-колонка: порядок строк задаёт order, разметка хаба не меняется */
+/* a group is a flex column: `order` sets the row order, the hub's markup does not change */
 #list .sgroup > ul.sact-flex { display: flex; flex-direction: column; }
-/* метка места пустая — не занимает места в строке */
+/* the place mark is empty: it takes no room in the row */
 .sact-mark { display: none !important; }

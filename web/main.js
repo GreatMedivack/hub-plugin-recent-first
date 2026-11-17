@@ -1,21 +1,22 @@
-// «Свежие сверху»: строки сессий в группах списка слева — по последней активности (правка ленты сессии, timeline_rev
-// из снимка: растёт при каждом шаге, ответе, сообщении). Код хаба не меняет: место sidebar.session метит строку
-// сессией, а порядок задаёт CSS order в группе (ul — flex-колонка). Исполнители под агентом идут сразу за ним.
+// "Recent first": session rows in the groups of the list on the left, by latest activity (a change of the session's
+// feed, timeline_rev from the snapshot: it grows with every step, reply, message). It does not change the hub code: the
+// sidebar.session place marks the row with the session, and CSS order inside the group sets the order (the ul is a flex
+// column). Executors under an agent come right after it.
 let snapRef = null, queued = false;
-// пересортировка — не чаще раза в REORDER_MS (владелец: строки прыгали на каждом шаге любой сессии). Между ними хаб
-// перерисовывает список новыми строками — на них ставим запомненный порядок; новая в группе строка встаёт по своей
-// активности сразу, остальные не двигаются; накопилось — один таймер на остаток срока
+// reorder at most once every REORDER_MS (rows used to jump on every step of any session). In between, the hub redraws
+// the list with new rows: they get the remembered order; a row new to the group takes its place by its activity at
+// once, the others do not move; whatever has built up waits for one timer for the rest of the period
 const REORDER_MS = 10000;
-const places = new Map();    // группа → имена строк по порядку с прошлой пересортировки
+const places = new Map();    // group → row names in order since the last reorder
 let sortedAt = -Infinity, timer = 0;
-// сдвиг строк на новое место за 150 мс (FLIP), во всех темах; при «меньше анимации» в системе — без движения
-const lastTop = new Map();   // имя сессии → где строка стояла (относительно своей группы) после прошлой сортировки
-const moving = new Map();    // имя → {delta, t0}: сдвиг идёт; хаб перерисовывает список на каждом снимке и строки
-                             // новые — анимацию продолжаем на новой строке с того же места, а не теряем
+// rows slide to their new place in 150 ms (FLIP), in all themes; with "reduce motion" in the system, without movement
+const lastTop = new Map();   // session name → where the row stood (relative to its group) after the last sort
+const moving = new Map();    // name → {delta, t0}: a slide in progress; the hub redraws the list on every snapshot and
+                             // the rows are new, so the animation continues on the new row from the same point, not lost
 const DUR = 150;
 const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 function slide(ul, named) {
-  if (!ul.offsetParent) return;   // группа свёрнута — запомним места, когда раскроют
+  if (!ul.offsetParent) return;   // the group is folded: positions are remembered once it is opened
   const base = ul.getBoundingClientRect().top, now = performance.now();
   for (const [li, n] of named) {
     const top = li.getBoundingClientRect().top - base, was = lastTop.get(n);
@@ -32,7 +33,7 @@ function slide(ul, named) {
 }
 
 function act(name) { return (snapRef?.timeline_rev || {})[name] || 0; }
-// агент — по самому свежему из него и его исполнителей (raised_by), даже если их список свёрнут
+// an agent goes by the freshest of itself and its executors (raised_by), even if their list is folded
 const score = (name) => Math.max(act(name), ...(snapRef?.sessions || []).filter((x) => x.raised_by === name).map((x) => act(x.name)));
 const groupOf = (ul) => { const box = ul.parentElement; return box.dataset.g ?? (box.dataset.sec ? "sec:" + box.dataset.sec : "bare"); };
 
@@ -40,8 +41,8 @@ function sortGroups() {
   queued = false;
   const now = performance.now(), due = now - sortedAt >= REORDER_MS;
   let moved = false, stale = false;
-  // сначала порядок во всех группах, потом сдвиги: чтение места строки после записи order — раскладка всей страницы,
-  // по одной на группу (23.10: ~6 раскладок на снимок, 0,65 с из 30); так — одна
+  // first the order in all groups, then the slides: reading a row's position after writing order lays out the whole
+  // page, once per group (~6 layouts per snapshot, 0.65 s out of 30); this way, once
   const slides = [];
   for (const ul of document.querySelectorAll("#list .sgroup > ul")) {
     ul.classList.add("sact-flex");
@@ -59,7 +60,7 @@ function sortGroups() {
         order.splice(at < 0 ? order.length : at, 0, n);
       }
       if (order.join("\n") !== fresh.join("\n")) stale = true;
-    } else if (was.join("\n") !== fresh.join("\n")) moved = true;   // переставили — следующая не раньше чем через срок
+    } else if (was.join("\n") !== fresh.join("\n")) moved = true;   // reordered: the next one not before the period ends
     places.set(key, order);
     const place = new Map(order.map((n, i) => [n, i]));
     for (const [li, n] of named) {

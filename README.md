@@ -1,14 +1,15 @@
-# Свежие сверху — плагин Agents Hub
+# Recent first: an Agents Hub plugin
 
-Сессии в списке слева — по последней активности: кто только что работал, отвечал или получил сообщение, тот выше.
-В каждой группе («Специалисты», «Исполнители»…) отдельно; агент поднимается и по свежести своих исполнителей, они
-остаются под ним. Перестановка — плавным сдвигом строк (150 мс), при «меньше анимации» в системе — без движения.
-Переставляет не чаще раза в 10 секунд: между пересортировками строки стоят на местах, накопившееся — одним сдвигом по
-истечении срока. Новая сессия в группе встаёт по своей активности сразу, остальные при этом не переставляются.
+Sessions in the list on the left by their latest activity: whoever just worked, replied or got a message is higher.
+Each group ("Specialists", "Executors"…) is sorted on its own; an agent also rises by the freshness of its executors,
+and they stay under it. Rows move to their new place with a smooth 150 ms slide; with "reduce motion" in the system,
+without movement. It reorders at most once every 10 seconds: between reorders the rows stay in place, and whatever has
+built up moves in one slide when the time is up. A new session in a group takes its place by its activity at once,
+without moving the others.
 
-Код хаба не меняет: место `sidebar.session` метит строку именем сессии, порядок задаёт CSS `order` в группе.
-Активность — `timeline_rev` из снимка хаба (растёт с каждым шагом и сообщением сессии). Только страница, в сеть не
-ходит, ничего не пишет. Сначала расставляет все группы, потом сдвигает строки — страница
-раскладывается один раз на пересортировку, а не по разу на группу.
+It does not change the hub code: the `sidebar.session` place marks a row with the session name, and the order is set
+with CSS `order` inside the group. Activity is `timeline_rev` from the hub snapshot (it grows with every step and
+message of a session). Page only: it makes no network requests and writes nothing. It first orders all the groups and
+then slides the rows, so the page is laid out once per reorder, not once per group.
 
-Нужен хаб с API плагинов 1.4. Код — MIT.
+Needs a hub with Plugin API 1.4. The code is MIT.

@@ -1,9 +1,9 @@
 {
   "name": "recent-first",
   "icon": "icon.png",
-  "description": "Сессии в списке слева — по последней активности: кто только что работал или писал, тот выше. В каждой группе («Специалисты», «Исполнители»…), исполнители остаются под своим агентом",
-  "why": "Активные агенты сверху — не искать глазами, кто сейчас работает",
-  "version": "1.2.1",
+  "description": "Sessions in the list on the left by their latest activity: whoever just worked or wrote is higher. Within each group (\"Specialists\", \"Executors\"…) executors stay under their agent",
+  "why": "Active agents on top: no need to search the list for who is working now",
+  "version": "1.2.2",
   "hub": "^1.4",
   "web": "web/main.js"
 }
