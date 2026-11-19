@@ -71,12 +71,101 @@ function sortGroups() {
     slides.push([ul, named]);
   }
   for (const [ul, named] of slides) slide(ul, named);
+  followTop(topOf());
   if (moved) sortedAt = now;
   if (stale && !timer) timer = setTimeout(() => { timer = 0; sortGroups(); }, sortedAt + REORDER_MS - now);
 }
 
+// ── «Открывать новое» (1.3.0): страница сама открывает сессию, которая по этой сортировке встала на первое место списка.
+// Включается кнопкой в шапке сессии или галочкой в «Настройки → Вид»; хранится в браузере (hub.opt.<плагин>), по умолчанию выключено.
+// Не переходит, пока владельцу мешать нельзя (набор текста, диалог, карточка, недавний клик/прокрутка, скрытая вкладка) —
+// переходит, когда станет можно, если сессия всё ещё сверху. Открытая и «старая при загрузке» сессии не в счёт.
+const QUIET_MS = 20000;    // после клика, прокрутки, клавиши, колеса — столько тишины до перехода
+const GAP_MS = 30000;      // не чаще одного перехода за это время (защита от зацикливания)
+const LOAD_MS = 10000;     // страница только загрузилась: список ещё складывается, запоминаем верх, не переходим
+let hubRef = null, prevTop, pending = null, lastGo = -Infinity, lastAct = -Infinity, ours = "", watch = 0;
+const ME = decodeURIComponent((new URL(import.meta.url).pathname.match(/\/ext\/([^/]+)\//) || [])[1] || "recent-first");
+const enabled = () => !!hubRef?.option("auto");
+const openName = () => { const m = location.hash.match(/^#\/s\/([^?]+)/); return m ? decodeURIComponent(m[1]) : ""; };
+function paint(b) {
+  const on = enabled();
+  b.classList.toggle("on", on);
+  b.setAttribute("aria-pressed", String(on));
+  b.title = on ? "Страница сама открывает сессию, которая встала на первое место списка. Нажмите, чтобы выключить"
+    : "Включить: страница сама откроет сессию, которая встанет на первое место списка";
+}
+function setEnabled(on) {   // та же запись, что у галочки «Вид»: hub.opt.<плагин>
+  try { localStorage.setItem(`hub.opt.${ME}`, JSON.stringify({ ...JSON.parse(localStorage.getItem(`hub.opt.${ME}`) || "{}"), auto: on })); } catch { /* нет хранилища */ }
+  pending = null;
+  prevTop = topOf();   // включили — верх на этот момент не «новый»
+  hubRef.redraw();
+}
+// первая видимая строка списка по порядку страницы (группы сверху вниз, внутри — как расставил плагин); хаб-строка закреплена и не в счёт
+function topOf() {
+  const hubName = (snapRef?.sessions || []).find((s) => s.kind === "hub")?.name;
+  for (const ul of document.querySelectorAll("#list .sgroup > ul")) {
+    if (!ul.offsetParent) continue;   // свёрнутая группа — не «верх списка»
+    const names = (places.get(groupOf(ul)) || []).filter((n) => n !== hubName);
+    const rows = new Set([...ul.querySelectorAll("[data-sact]")].map((x) => x.dataset.sact));
+    const n = names.find((x) => rows.has(x));
+    if (n) return n;
+  }
+  return undefined;
+}
+// владельцу сейчас нельзя мешать: пустая строка — можно
+function busy() {
+  if (document.visibilityState !== "visible") return "вкладка скрыта";
+  if (performance.now() - lastAct < QUIET_MS) return "недавно кликал или прокручивал";
+  if (document.querySelector("dialog[open]")) return "открыт диалог";
+  const h = location.hash;
+  if (h && !h.startsWith("#/s/")) return "открыт не чат (настройки, вид плагина)";
+  const ta = document.querySelector("main textarea");
+  if (ta && (document.activeElement === ta || ta.value.trim())) return "в поле ввода курсор или текст";
+  if ([...document.querySelectorAll("main .feed-inner > .card:not(.frozen)")].some((c) => c.getClientRects().length)) return "в ленте открытая карточка";
+  return "";
+}
+function followTop(top) {
+  if (top === undefined) return;
+  if (prevTop === undefined || performance.now() < LOAD_MS) prevTop = top;
+  else if (top !== prevTop) { prevTop = top; if (enabled()) pending = top; }
+  attempt();
+}
+function attempt() {
+  if (!pending) return clearInterval(watch), watch = 0;
+  if (!enabled() || pending !== prevTop || pending === openName() || !(snapRef?.sessions || []).some((s) => s.name === pending)) { pending = null; return; }
+  if (!watch) watch = setInterval(attempt, 1000);   // ждём, пока станет можно, без нового снимка
+  if (busy() || performance.now() - lastGo < GAP_MS) return;
+  lastGo = performance.now();
+  ours = "#/s/" + encodeURIComponent(pending);
+  pending = null;
+  location.hash = ours;   // как go() хаба
+}
+
 export default function register(hub) {
   hub.addStyle("web/style.css");
+  hubRef = hub;
+  hub.addOptions({
+    title: "Свежие сверху",
+    options: [{ key: "auto", label: "Открывать новое: переходить на сессию, которая встала на первое место списка",
+      hint: "Не переходит при наборе текста, открытой карточке и сразу после клика или прокрутки — позже, если она всё ещё сверху", on: false }],
+  });
+  for (const ev of ["wheel", "pointerdown", "keydown", "touchmove"]) document.addEventListener(ev, () => { lastAct = performance.now(); }, { capture: true, passive: true });
+  // владелец сам открыл другую сессию — это его выбор: ожидавший переход отменяется
+  addEventListener("hashchange", () => { if (location.hash !== ours) pending = null; ours = ""; });
+  hub.addSlot("session.header", {
+    id: "auto-open",
+    order: 999,
+    render(root) {
+      let b = root.querySelector(":scope > .sact-auto");
+      if (!b) {
+        b = hub.el("button", "btn quiet small sact-auto", "Открывать новое");
+        b.type = "button";
+        b.addEventListener("click", (e) => { e.stopPropagation(); setEnabled(!enabled()); paint(b); });
+        root.append(b);
+      }
+      paint(b);
+    },
+  });
   hub.addSlot("sidebar.session", {
     id: "recent-first",
     order: 999,

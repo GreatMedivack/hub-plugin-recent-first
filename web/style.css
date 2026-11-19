@@ -2,3 +2,7 @@
 #list .sgroup > ul.sact-flex { display: flex; flex-direction: column; }
 /* метка места пустая — не занимает места в строке */
 .sact-mark { display: none !important; }
+/* кнопка «Открывать новое» в шапке сессии: включена — заливка акцентом */
+.sact-auto { white-space: nowrap; }
+.sact-auto.on { background: color-mix(in oklab, var(--primary) 18%, var(--card)); border-color: color-mix(in oklab, var(--primary) 55%, var(--border)); color: var(--foreground); }
+.sact-auto.on::before { content: "●"; margin-right: 5px; color: var(--primary); }
