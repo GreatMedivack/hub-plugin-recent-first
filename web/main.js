@@ -78,7 +78,7 @@ function sortGroups() {
 
 // ── «Открывать новое» (1.3.0): страница сама открывает сессию, которая по этой сортировке встала на первое место списка.
 // Включается кнопкой в шапке сессии или галочкой в «Настройки → Вид»; хранится в браузере (hub.opt.<плагин>), по умолчанию выключено.
-// Не переходит, пока владельцу мешать нельзя (набор текста, диалог, карточка, недавний клик/прокрутка, скрытая вкладка) —
+// Не переходит, пока владельцу мешать нельзя (текст в поле ввода, диалог, недавний клик/прокрутка/клавиши в поле, скрытая вкладка; фокус в поле и открытые карточки не мешают) —
 // переходит, когда станет можно, если сессия всё ещё сверху. Открытая и «старая при загрузке» сессии не в счёт.
 const QUIET_MS = 20000;    // после клика, прокрутки, клавиши, колеса — столько тишины до перехода
 const GAP_MS = 30000;      // не чаще одного перехода за это время (защита от зацикливания)
@@ -87,12 +87,18 @@ let hubRef = null, prevTop, pending = null, lastGo = -Infinity, lastAct = -Infin
 const ME = decodeURIComponent((new URL(import.meta.url).pathname.match(/\/ext\/([^/]+)\//) || [])[1] || "recent-first");
 const enabled = () => !!hubRef?.option("auto");
 const openName = () => { const m = location.hash.match(/^#\/s\/([^?]+)/); return m ? decodeURIComponent(m[1]) : ""; };
+let waitWhy = "";   // почему переход откладывается сейчас («» — не ждём)
 function paint(b) {
   const on = enabled();
   b.classList.toggle("on", on);
   b.setAttribute("aria-pressed", String(on));
-  b.title = on ? "Страница сама открывает сессию, которая встала на первое место списка. Нажмите, чтобы выключить"
+  b.title = on ? (waitWhy ? `Жду: ${waitWhy}. ` : "") + "Страница сама открывает сессию, которая встала на первое место списка. Нажмите, чтобы выключить"
     : "Включить: страница сама откроет сессию, которая встанет на первое место списка";
+}
+function setWhy(why) {
+  if (why === waitWhy) return;
+  waitWhy = why;
+  for (const b of document.querySelectorAll(".sact-auto")) paint(b);
 }
 function setEnabled(on) {   // та же запись, что у галочки «Вид»: hub.opt.<плагин>
   try { localStorage.setItem(`hub.opt.${ME}`, JSON.stringify({ ...JSON.parse(localStorage.getItem(`hub.opt.${ME}`) || "{}"), auto: on })); } catch { /* нет хранилища */ }
@@ -119,9 +125,8 @@ function busy() {
   if (document.querySelector("dialog[open]")) return "открыт диалог";
   const h = location.hash;
   if (h && !h.startsWith("#/s/")) return "открыт не чат (настройки, вид плагина)";
-  const ta = document.querySelector("main textarea");
-  if (ta && (document.activeElement === ta || ta.value.trim())) return "в поле ввода курсор или текст";
-  if ([...document.querySelectorAll("main .feed-inner > .card:not(.frozen)")].some((c) => c.getClientRects().length)) return "в ленте открытая карточка";
+  const ta = document.querySelector("main textarea");   // фокус в поле не мешает (страница сама ставит его при открытии сессии), мешает только набранный текст
+  if (ta && ta.value.trim()) return "в поле ввода набран текст";
   return "";
 }
 function followTop(top) {
@@ -131,10 +136,12 @@ function followTop(top) {
   attempt();
 }
 function attempt() {
-  if (!pending) return clearInterval(watch), watch = 0;
-  if (!enabled() || pending !== prevTop || pending === openName() || !(snapRef?.sessions || []).some((s) => s.name === pending)) { pending = null; return; }
+  if (!pending) return clearInterval(watch), watch = 0, setWhy("");
+  if (!enabled() || pending !== prevTop || pending === openName() || !(snapRef?.sessions || []).some((s) => s.name === pending)) { pending = null; return attempt(); }
   if (!watch) watch = setInterval(attempt, 1000);   // ждём, пока станет можно, без нового снимка
-  if (busy() || performance.now() - lastGo < GAP_MS) return;
+  const why = busy() || (performance.now() - lastGo < GAP_MS ? "только что был переход" : "");
+  setWhy(why);
+  if (why) return;
   lastGo = performance.now();
   ours = "#/s/" + encodeURIComponent(pending);
   pending = null;
@@ -147,9 +154,13 @@ export default function register(hub) {
   hub.addOptions({
     title: "Свежие сверху",
     options: [{ key: "auto", label: "Открывать новое: переходить на сессию, которая встала на первое место списка",
-      hint: "Не переходит при наборе текста, открытой карточке и сразу после клика или прокрутки — позже, если она всё ещё сверху", on: false }],
+      hint: "Не переходит, пока в поле набран текст и сразу после клика или прокрутки — позже, если она всё ещё сверху", on: false }],
   });
-  for (const ev of ["wheel", "pointerdown", "keydown", "touchmove"]) document.addEventListener(ev, () => { lastAct = performance.now(); }, { capture: true, passive: true });
+  // тишина после прокрутки, клика и клавиш в поле ввода; клавиши вне поля (горячие клавиши страницы) тишины не просят
+  for (const ev of ["wheel", "pointerdown", "keydown", "touchmove"]) document.addEventListener(ev, (e) => {
+    if (ev === "keydown" && !e.target?.closest?.("textarea, input, [contenteditable]")) return;
+    lastAct = performance.now();
+  }, { capture: true, passive: true });
   // владелец сам открыл другую сессию — это его выбор: ожидавший переход отменяется
   addEventListener("hashchange", () => { if (location.hash !== ours) pending = null; ours = ""; });
   hub.addSlot("session.header", {
